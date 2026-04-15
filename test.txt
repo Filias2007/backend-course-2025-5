@@ -15,3 +15,5 @@ curl.exe -X POST http://127.0.0.1:3000/200
 node main.js -h 127.0.0.1 -p 3000 -c ./cache
 
 curl.exe -i -X PUT --data-binary "@./cache/200.jpg" http://127.0.0.1:3000/100
+
+curl.exe -i http://127.0.0.1:3000/404 --output cat404.jpg

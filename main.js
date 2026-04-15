@@ -2,12 +2,12 @@ const { program } = require('commander');
 const http = require('node:http');
 const fs = require('node:fs/promises');
 const path = require('node:path');
+const superagent = require('superagent');
 
-// --- ЧАСТИНА 1: Параметри командного рядка ---
 program
-  .requiredOption('-h, --host <host>', 'адреса сервера')
-  .requiredOption('-p, --port <port>', 'порт сервера')
-  .requiredOption('-c, --cache <path>', 'шлях до директорії з кешем');
+  .requiredOption('-h, --host <host>', 'host address')
+  .requiredOption('-p, --port <port>', 'port number')
+  .requiredOption('-c, --cache <path>', 'cache directory path');
 
 program.parse();
 const options = program.opts();
@@ -17,13 +17,11 @@ async function ensureCacheDir() {
     await fs.access(options.cache);
   } catch {
     await fs.mkdir(options.cache, { recursive: true });
-    console.log(`Директорію кешу створено: ${options.cache}`);
   }
 }
 
-// --- ЧАСТИНА 2: Обробка запитів (GET, PUT, DELETE) ---
 const server = http.createServer(async (req, res) => {
-  const statusCode = req.url.slice(1); // Витягуємо код, наприклад '200'
+  const statusCode = req.url.slice(1);
   const filePath = path.join(options.cache, `${statusCode}.jpg`);
 
   try {
@@ -34,23 +32,38 @@ const server = http.createServer(async (req, res) => {
           res.writeHead(200, { 'Content-Type': 'image/jpeg' });
           res.end(data);
         } catch (err) {
-          res.writeHead(404);
-          res.end('Not Found');
+          try {
+            console.log(`Кешу немає. Завантажую з http.cat для: ${statusCode}`);
+            
+            // Використовуємо buffer() ТА забираємо response.body
+            const response = await superagent
+              .get(`https://http.cat/${statusCode}`)
+              .buffer(true); 
+
+            const imageBuffer = response.body;
+
+            // Перевірка: якщо прийшов не Buffer або він замалий
+            if (!Buffer.isBuffer(imageBuffer)) {
+              throw new Error('Отримані дані не є бінарним файлом');
+            }
+
+            await fs.writeFile(filePath, imageBuffer);
+            res.writeHead(200, { 'Content-Type': 'image/jpeg' });
+            res.end(imageBuffer);
+          } catch (fetchErr) {
+            res.writeHead(404, { 'Content-Type': 'text/plain' });
+            res.end('Not Found');
+          }
         }
         break;
 
       case 'PUT':
         let body = [];
-        req.on('data', (chunk) => body.push(chunk));
+        req.on('data', chunk => body.push(chunk));
         req.on('end', async () => {
-          try {
-            await fs.writeFile(filePath, Buffer.concat(body));
-            res.writeHead(201);
-            res.end('Created');
-          } catch (err) {
-            res.writeHead(500);
-            res.end('Internal Server Error');
-          }
+          await fs.writeFile(filePath, Buffer.concat(body));
+          res.writeHead(201);
+          res.end('Created');
         });
         break;
 
@@ -59,7 +72,7 @@ const server = http.createServer(async (req, res) => {
           await fs.unlink(filePath);
           res.writeHead(200);
           res.end('Deleted');
-        } catch (err) {
+        } catch {
           res.writeHead(404);
           res.end('Not Found');
         }
@@ -68,26 +81,15 @@ const server = http.createServer(async (req, res) => {
       default:
         res.writeHead(405);
         res.end('Method Not Allowed');
-        break;
     }
-  } catch (globalError) {
+  } catch (e) {
     res.writeHead(500);
-    res.end('Server Error');
+    res.end('Internal Error');
   }
 });
 
-
-async function start() {
-  try {
-    await ensureCacheDir();
-    server.listen(options.port, options.host, () => {
-      console.log(`Сервер працює за адресою http://${options.host}:${options.port}`);
-      console.log(`Кеш зберігається у: ${path.resolve(options.cache)}`);
-    });
-  } catch (err) {
-    console.error('Помилка запуску:', err.message);
-    process.exit(1);
-  }
-}
-
-start();
+ensureCacheDir().then(() => {
+  server.listen(options.port, options.host, () => {
+    console.log(`Сервер: http://${options.host}:${options.port}`);
+  });
+});
