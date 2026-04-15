@@ -1,0 +1,17 @@
+1. Перевірка PUT (завантаження картинки):
+curl.exe -X PUT --data-binary "@./cache/200.jpg" http://127.0.0.1:3000/100
+
+2. Перевірка GET (отримання з кешу):
+ curl.exe  http://127.0.0.1:3000/200 --output result.jpg
+
+3. Перевірка DELETE (видалення з кешу):
+curl.exe -X DELETE http://127.0.0.1:3000/200 
+
+4. Перевірка 405 (недозволений метод):
+curl.exe -X POST http://127.0.0.1:3000/200  
+
+
+
+node main.js -h 127.0.0.1 -p 3000 -c ./cache
+
+curl.exe -i -X PUT --data-binary "@./cache/200.jpg" http://127.0.0.1:3000/100
